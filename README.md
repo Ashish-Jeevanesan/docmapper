@@ -1,7 +1,7 @@
 # DocuMapper
 
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="assets/banner.png" />
+<img width="100%" alt="DocuMapper Banner" src="assets/banner.png" />
 </div>
 
 **DocuMapper** is a powerful, interactive visual utility designed to bridge the gap between unstructured document layouts and structured data extraction. By providing a clean interface over high-resolution document previews, it allows engineering, data entry, and implementation teams to visually map coordinates across templates—greatly speeding up the setup process for automated intelligent document processing or Jasper reporting schemas.
