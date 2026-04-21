@@ -48,6 +48,7 @@ export default function App() {
   
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number } | null>(null);
   const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number } | null>(null);
   const panRef = useRef<{ startX: number, startY: number, startPanX: number, startPanY: number } | null>(null);
@@ -62,6 +63,29 @@ export default function App() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleJSONUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (prev) => {
+        try {
+          const importedMappings = JSON.parse(prev.target?.result as string);
+          if (Array.isArray(importedMappings)) {
+            setMappings(importedMappings);
+          } else {
+            alert("Invalid mapping file format.");
+          }
+        } catch (error) {
+          console.error("Error parsing JSON file", error);
+          alert("Error parsing JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    }
+    // clear input
+    e.target.value = '';
   };
 
   const loadSample = () => {
@@ -253,6 +277,19 @@ export default function App() {
               Load Sample
             </button>
           )}
+          <button 
+            onClick={() => importInputRef.current?.click()}
+            className="bg-white text-indigo-600 border border-indigo-200 px-4 py-1.5 rounded text-xs font-semibold hover:bg-indigo-50 transition-colors shadow-sm active:scale-95"
+          >
+            Import JSON
+          </button>
+          <input 
+            type="file" 
+            ref={importInputRef} 
+            className="hidden" 
+            accept=".json" 
+            onChange={handleJSONUpload} 
+          />
           <button 
             onClick={() => setIsExportOpen(true)}
             className="bg-indigo-600 text-white px-4 py-1.5 rounded text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm active:scale-95"
