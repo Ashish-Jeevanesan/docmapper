@@ -1,4 +1,4 @@
-# DocMapper Pro (React Example)
+# DocuMapper
 
 This project is a web application built with React, Vite, and TypeScript, demonstrating the use of the Google Gemini API.
 

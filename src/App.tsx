@@ -257,7 +257,7 @@ export default function App() {
             <Database size={18} />
           </div>
           <div>
-            <h1 className="text-sm font-bold uppercase tracking-tight leading-none">Document Mapper Pro</h1>
+            <h1 className="text-sm font-bold uppercase tracking-tight leading-none">DocuMapper</h1>
             <p className="text-[10px] text-slate-500 uppercase font-medium tracking-widest mt-1">
               {image ? "Live Mapping Session" : "Awaiting Document Upload"}
             </p>
@@ -600,7 +600,7 @@ export default function App() {
         <div className="flex gap-6 uppercase">
           <span className="flex items-center gap-1.5">
             <Settings2 size={10} />
-            NODE: DOC_MAPPER_PRO_V1
+            NODE: DOCUMAPPER_V1
           </span>
           <span className="hidden sm:inline">STATE: {image ? "PROCESSING" : "STANDBY"}</span>
           <span className="text-emerald-400 hidden sm:inline">AUTO-SAVE: ENABLED</span>
