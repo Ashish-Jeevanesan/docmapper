@@ -13,6 +13,7 @@ export interface FieldMapping {
   width: number;
   height: number;
   page?: number;
+  isLocked?: boolean;
 }
 
 export interface DocumentState {

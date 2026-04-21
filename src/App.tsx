@@ -18,7 +18,11 @@ import {
   Database,
   ZoomIn,
   ZoomOut,
-  Maximize
+  Maximize,
+  Hand,
+  MousePointer2,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -37,10 +41,16 @@ export default function App() {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isResizing, setIsResizing] = useState(false);
+  const [interactionMode, setInteractionMode] = useState<'map' | 'pan'>('map');
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number } | null>(null);
+  const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number } | null>(null);
+  const panRef = useRef<{ startX: number, startY: number, startPanX: number, startPanY: number } | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -58,10 +68,11 @@ export default function App() {
     setImage('https://picsum.photos/seed/document/1200/1800');
     setMappings(INITIAL_FIELDS);
     setZoom(1);
+    setPan({ x: 0, y: 0 });
   };
 
   const addMapping = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!imgRef.current || isResizing) return;
+    if (!imgRef.current || isResizing || isDragging || interactionMode === 'pan') return;
     const rect = imgRef.current.getBoundingClientRect();
     
     // Position box so click is roughly top-left
@@ -84,6 +95,7 @@ export default function App() {
   };
 
   const startResize = (e: React.MouseEvent, m: FieldMapping) => {
+    if (m.isLocked) return;
     e.stopPropagation();
     e.preventDefault();
     setIsResizing(true);
@@ -96,32 +108,83 @@ export default function App() {
     };
   };
 
+  const startDrag = (e: React.MouseEvent, m: FieldMapping) => {
+    if (interactionMode === 'pan' || m.isLocked) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setIsDragging(true);
+    dragRef.current = {
+      id: m.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startBoxX: m.x,
+      startBoxY: m.y
+    };
+    setSelectedId(m.id);
+  };
+
+  const startPan = (e: React.MouseEvent) => {
+    if (interactionMode !== 'pan') return;
+    e.preventDefault();
+    setIsPanning(true);
+    panRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPanX: pan.x,
+      startPanY: pan.y
+    };
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing || !resizeRef.current || !imgRef.current) return;
-      
-      const { id, startX, startY, startWidth, startHeight } = resizeRef.current;
-      const rect = imgRef.current.getBoundingClientRect();
-      
-      // Calculate change in percentage units
-      const deltaXPercent = ((e.clientX - startX) / rect.width) * 100;
-      const deltaYPercent = ((e.clientY - startY) / rect.height) * 100;
+      if (isResizing && resizeRef.current && imgRef.current) {
+        const { id, startX, startY, startWidth, startHeight } = resizeRef.current;
+        const rect = imgRef.current.getBoundingClientRect();
+        
+        // Calculate change in percentage units
+        const deltaXPercent = ((e.clientX - startX) / rect.width) * 100;
+        const deltaYPercent = ((e.clientY - startY) / rect.height) * 100;
 
-      setMappings(prev => prev.map(m => 
-        m.id === id ? { 
-          ...m, 
-          width: Math.max(1, startWidth + deltaXPercent),
-          height: Math.max(1, startHeight + deltaYPercent)
-        } : m
-      ));
+        setMappings(prev => prev.map(m => 
+          m.id === id ? { 
+            ...m, 
+            width: Math.max(1, startWidth + deltaXPercent),
+            height: Math.max(1, startHeight + deltaYPercent)
+          } : m
+        ));
+      } else if (isDragging && dragRef.current && imgRef.current) {
+        const { id, startX, startY, startBoxX, startBoxY } = dragRef.current;
+        const rect = imgRef.current.getBoundingClientRect();
+        
+        const deltaXPercent = ((e.clientX - startX) / rect.width) * 100;
+        const deltaYPercent = ((e.clientY - startY) / rect.height) * 100;
+
+        setMappings(prev => prev.map(m => 
+          m.id === id ? { 
+            ...m, 
+            x: Math.max(0, Math.min(100 - m.width, startBoxX + deltaXPercent)),
+            y: Math.max(0, Math.min(100 - m.height, startBoxY + deltaYPercent))
+          } : m
+        ));
+      } else if (isPanning && panRef.current) {
+        const { startX, startY, startPanX, startPanY } = panRef.current;
+        setPan({
+          x: startPanX + (e.clientX - startX),
+          y: startPanY + (e.clientY - startY)
+        });
+      }
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
+      setIsDragging(false);
+      setIsPanning(false);
       resizeRef.current = null;
+      dragRef.current = null;
+      panRef.current = null;
     };
 
-    if (isResizing) {
+    if (isResizing || isDragging || isPanning) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -130,10 +193,14 @@ export default function App() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizing]);
+  }, [isResizing, isDragging, isPanning]);
 
   const handleZoom = (delta: number) => {
-    setZoom(prev => Math.min(Math.max(0.5, prev + delta), 3));
+    setZoom(prev => {
+      const newZoom = Math.min(Math.max(0.5, prev + delta), 3);
+      if (newZoom === 1) setPan({ x: 0, y: 0 }); // Reset pan when zooming back to 100%
+      return newZoom;
+    });
   };
 
   const updateMapping = (id: string, updates: Partial<FieldMapping>) => {
@@ -200,6 +267,27 @@ export default function App() {
         <div className="flex-1 overflow-auto bg-slate-200 p-8 flex justify-center items-start scrollbar-hide relative group/canvas">
           {image && (
             <div className="fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white border border-slate-300 rounded-full shadow-lg px-2 py-1.5 z-40">
+              <button
+                onClick={() => setInteractionMode('map')}
+                className={cn(
+                  "p-2 rounded-full transition-colors",
+                  interactionMode === 'map' ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
+                )}
+                title="Mapping Mode"
+              >
+                <MousePointer2 size={16} />
+              </button>
+              <button
+                onClick={() => setInteractionMode('pan')}
+                className={cn(
+                  "p-2 rounded-full transition-colors",
+                  interactionMode === 'pan' ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
+                )}
+                title="Pan Mode"
+              >
+                <Hand size={16} />
+              </button>
+              <div className="w-px h-5 bg-slate-200 mx-1" />
               <button 
                 onClick={(e) => { e.stopPropagation(); handleZoom(-0.25); }}
                 className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
@@ -249,8 +337,9 @@ export default function App() {
             </div>
           ) : (
             <div 
-              className="relative shadow-2xl bg-white border border-slate-300 transition-transform origin-top-center"
-              style={{ transform: `scale(${zoom})` }}
+              className={cn("relative shadow-2xl bg-white border border-slate-300 transition-transform origin-center cursor-default", interactionMode === 'pan' && (isPanning ? 'cursor-grabbing' : 'cursor-grab'))}
+              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+              onMouseDown={startPan}
             >
               <img 
                 ref={imgRef}
@@ -260,7 +349,7 @@ export default function App() {
                 referrerPolicy="no-referrer"
               />
               <div 
-                className="absolute inset-0 cursor-crosshair"
+                className={cn("absolute inset-0", interactionMode === 'map' ? "cursor-crosshair" : "pointer-events-none")}
                 onClick={addMapping}
               >
                 {mappings.map((m) => (
@@ -269,25 +358,30 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className={cn(
-                      "absolute border-2 border-dashed transition-all group",
-                      selectedId === m.id 
-                        ? "border-indigo-500 bg-indigo-50/50 z-30 ring-2 ring-indigo-500/10" 
-                        : "border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/20 z-20"
+                      "absolute border-2 transition-all group",
+                      m.isLocked ? "border-solid border-slate-400 bg-slate-100/10 hover:border-slate-500" : "border-dashed",
+                      selectedId === m.id && !m.isLocked
+                        ? "border-indigo-500 bg-indigo-50/50 z-30 ring-2 ring-indigo-500/10 cursor-move" 
+                        : selectedId === m.id && m.isLocked
+                          ? "border-slate-500 bg-slate-100/30 z-30 ring-2 ring-slate-500/10"
+                          : !m.isLocked && "border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/20 z-20 cursor-move"
                     )}
                     style={{
                       left: `${m.x}%`,
                       top: `${m.y}%`,
                       width: `${m.width}%`,
                       height: `${m.height}%`,
+                      pointerEvents: interactionMode === 'map' ? 'auto' : 'none',
                     }}
+                    onMouseDown={(e) => startDrag(e, m)}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedId(m.id);
                     }}
                   >
                     <span className={cn(
-                      "absolute -top-2 -left-2 text-[8px] px-1 font-bold rounded shadow-sm transition-colors",
-                      selectedId === m.id ? "bg-indigo-600 text-white" : "bg-slate-400 text-white"
+                      "absolute -top-2 -left-2 text-[8px] px-1 font-bold rounded shadow-sm transition-colors cursor-default",
+                      selectedId === m.id ? (m.isLocked ? "bg-slate-500 text-white" : "bg-indigo-600 text-white") : "bg-slate-400 text-white"
                     )}
                     style={{ transform: `scale(${1/zoom})`, transformOrigin: 'top left' }} // Keep label readable at any zoom
                     >
@@ -295,7 +389,7 @@ export default function App() {
                     </span>
 
                     {/* Resize Handle */}
-                    {selectedId === m.id && (
+                    {selectedId === m.id && !m.isLocked && (
                       <div 
                         onMouseDown={(e) => startResize(e, m)}
                         className="absolute -bottom-1 -right-1 w-3 h-3 bg-indigo-600 rounded-sm cursor-nwse-resize shadow-md flex items-center justify-center group-hover:scale-110 transition-transform"
@@ -333,8 +427,17 @@ export default function App() {
             ) : (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-200">
                 {/* Active Selection Info */}
-                <div className="p-3 bg-indigo-600 text-white rounded shadow-sm">
-                  <label className="text-[9px] uppercase font-bold opacity-70 tracking-widest">Active Selection</label>
+                <div className={cn("p-3 text-white rounded shadow-sm transition-colors", selectedMapping.isLocked ? "bg-slate-500" : "bg-indigo-600")}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] uppercase font-bold opacity-70 tracking-widest">Active Selection</label>
+                    <button 
+                      onClick={() => updateMapping(selectedMapping.id, { isLocked: !selectedMapping.isLocked })}
+                      className="p-1 hover:bg-white/20 rounded transition-colors"
+                      title={selectedMapping.isLocked ? "Unlock mapping" : "Lock mapping"}
+                    >
+                      {selectedMapping.isLocked ? <Lock size={12} /> : <Unlock size={12} />}
+                    </button>
+                  </div>
                   <div className="flex items-center justify-between mt-1">
                     <p className="text-sm font-semibold truncate pr-2">{selectedMapping.label}</p>
                     <span className="text-[9px] px-2 py-0.5 bg-white/20 rounded font-mono shrink-0">ID: {selectedMapping.id.split('-')[0]}</span>
@@ -346,9 +449,10 @@ export default function App() {
                     <label className="text-[10px] font-bold uppercase text-slate-500 tracking-tight">Display Label</label>
                     <input 
                       type="text"
+                      disabled={selectedMapping.isLocked}
                       value={selectedMapping.label}
                       onChange={(e) => updateMapping(selectedMapping.id, { label: e.target.value })}
-                      className="w-full text-xs border border-slate-300 rounded p-2 bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                      className="w-full text-xs border border-slate-300 rounded p-2 bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -358,10 +462,11 @@ export default function App() {
                       <Database size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
                       <input 
                         type="text"
+                        disabled={selectedMapping.isLocked}
                         placeholder="e.g. invoice_total"
                         value={selectedMapping.columnName}
                         onChange={(e) => updateMapping(selectedMapping.id, { columnName: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
-                        className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+                        className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
                       />
                     </div>
                   </div>
@@ -369,18 +474,20 @@ export default function App() {
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase text-slate-500 tracking-tight">Business Comments</label>
                     <textarea 
+                      disabled={selectedMapping.isLocked}
                       placeholder="Logic instructions for template generation..."
                       value={selectedMapping.comment}
                       onChange={(e) => updateMapping(selectedMapping.id, { comment: e.target.value })}
-                      className="w-full text-xs border border-slate-300 rounded p-2 h-24 resize-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder:italic leading-relaxed"
+                      className="w-full text-xs border border-slate-300 rounded p-2 h-24 resize-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder:italic leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
                     />
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex gap-2">
                   <button 
+                    disabled={selectedMapping.isLocked}
                     onClick={() => removeMapping(selectedMapping.id)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Trash2 size={12} />
                     Remove
@@ -421,7 +528,11 @@ export default function App() {
                         <span className="text-[9px] text-slate-400 italic truncate">{m.label}</span>
                       </div>
                       <div className="shrink-0 ml-2">
-                        {m.columnName ? (
+                        {m.isLocked ? (
+                          <div className="w-4 h-4 rounded flex items-center justify-center text-slate-400">
+                             <Lock size={10} /> 
+                          </div>
+                        ) : m.columnName ? (
                           <div className="w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white">
                              <Plus size={8} className="rotate-45" /> 
                           </div>
