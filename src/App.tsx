@@ -147,7 +147,7 @@ export default function App() {
   const startResize = (e: React.PointerEvent, m: FieldMapping) => {
     if (m.isLocked) return;
     e.stopPropagation();
-    try { e.target.setPointerCapture(e.pointerId); } catch(err) {} 
+    e.preventDefault();
     setIsResizing(true);
     resizeRef.current = {
       id: m.id,
@@ -164,7 +164,7 @@ export default function App() {
   const startDrag = (e: React.PointerEvent, m: FieldMapping) => {
     if (interactionMode === 'pan' || m.isLocked) return;
     e.stopPropagation();
-    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
+    e.preventDefault();
     setIsDragging(true);
     dragRef.current = {
       id: m.id,
@@ -183,7 +183,7 @@ export default function App() {
 
   const startPan = (e: React.PointerEvent) => {
     if (interactionMode !== 'pan') return;
-    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
+    e.preventDefault();
     setIsPanning(true);
     panRef.current = {
       startX: e.clientX,
