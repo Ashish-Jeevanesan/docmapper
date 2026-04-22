@@ -59,9 +59,12 @@ export default function App() {
   const importInputRef = useRef<HTMLInputElement>(null);
   
   // References to preserve coordinates during continuous drag events
-  const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number, currentW: number, currentH: number } | null>(null);
-  const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number, currentX: number, currentY: number, boxWidth: number, boxHeight: number } | null>(null);
+  const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number, currentW: number, currentH: number, pointerType: string } | null>(null);
+  const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number, currentX: number, currentY: number, boxWidth: number, boxHeight: number, pointerType: string } | null>(null);
   const panRef = useRef<{ startX: number, startY: number, startPanX: number, startPanY: number } | null>(null);
+  
+  // Pinch-to-zoom tracking
+  const pinchRef = useRef<number | null>(null);
 
   // --- FILE HANDLING ---
   
@@ -109,10 +112,16 @@ export default function App() {
     setPan({ x: 0, y: 0 });
   };
 
+  // Toggle all fields locked/unlocked
+  const toggleLockAll = () => {
+    const allLocked = mappings.every(m => m.isLocked);
+    setMappings(prev => prev.map(m => ({ ...m, isLocked: !allLocked })));
+  };
+
   // --- INTERACTION HANDLERS ---
   
   // Creates a new mapping box directly on the clicked coordinates (translated to percentages)
-  const addMapping = (e: React.MouseEvent<HTMLDivElement>) => {
+  const addMapping = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!imgRef.current || isResizing || isDragging || interactionMode === 'pan') return;
     const rect = imgRef.current.getBoundingClientRect();
     
@@ -135,10 +144,10 @@ export default function App() {
     setSelectedId(newMapping.id);
   };
 
-  const startResize = (e: React.MouseEvent, m: FieldMapping) => {
+  const startResize = (e: React.PointerEvent, m: FieldMapping) => {
     if (m.isLocked) return;
     e.stopPropagation();
-    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch(err) {} 
     setIsResizing(true);
     resizeRef.current = {
       id: m.id,
@@ -147,14 +156,15 @@ export default function App() {
       startWidth: m.width,
       startHeight: m.height,
       currentW: m.width,
-      currentH: m.height
+      currentH: m.height,
+      pointerType: e.pointerType
     };
   };
 
-  const startDrag = (e: React.MouseEvent, m: FieldMapping) => {
+  const startDrag = (e: React.PointerEvent, m: FieldMapping) => {
     if (interactionMode === 'pan' || m.isLocked) return;
     e.stopPropagation();
-    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
     setIsDragging(true);
     dragRef.current = {
       id: m.id,
@@ -165,14 +175,15 @@ export default function App() {
       currentX: m.x,
       currentY: m.y,
       boxWidth: m.width,
-      boxHeight: m.height
+      boxHeight: m.height,
+      pointerType: e.pointerType
     };
     setSelectedId(m.id);
   };
 
-  const startPan = (e: React.MouseEvent) => {
+  const startPan = (e: React.PointerEvent) => {
     if (interactionMode !== 'pan') return;
-    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
     setIsPanning(true);
     panRef.current = {
       startX: e.clientX,
@@ -182,9 +193,31 @@ export default function App() {
     };
   };
 
-  // Core Event Loop for Mouse movement (Resizing mappings, dragging mappings, or panning the entire canvas)
+  // Core Event Loop for Pointer movement (Resizing mappings, dragging mappings, or panning the entire canvas)
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
+      // Handle Loupe UI for touch events
+      const loupeEl = document.getElementById('drag-loupe');
+      const loupeImgEl = document.getElementById('drag-loupe-img');
+      const isTouchDrag = (isResizing && resizeRef.current?.pointerType === 'touch') || (isDragging && dragRef.current?.pointerType === 'touch');
+      
+      if (isTouchDrag && loupeEl && loupeImgEl && imgRef.current) {
+         loupeEl.style.opacity = '1';
+         loupeEl.style.left = `${e.clientX}px`;
+         loupeEl.style.top = `${e.clientY - 70}px`;
+         
+         const rect = imgRef.current.getBoundingClientRect();
+         // Calculate the percentage position of the touch relative to the image
+         const pctX = (e.clientX - rect.left) / rect.width;
+         const pctY = (e.clientY - rect.top) / rect.height;
+         // Translate the magnifier image heavily to mimic zoom
+         loupeImgEl.style.width = `${rect.width * 2}px`;
+         loupeImgEl.style.height = `${rect.height * 2}px`;
+         loupeImgEl.style.transform = `translate(${-pctX * rect.width * 2 + 48}px, ${-pctY * rect.height * 2 + 48}px)`;
+      } else if (loupeEl) {
+         loupeEl.style.opacity = '0';
+      }
+
       if (isResizing && resizeRef.current && imgRef.current) {
         const { id, startX, startY, startWidth, startHeight } = resizeRef.current;
         const rect = imgRef.current.getBoundingClientRect();
@@ -229,7 +262,7 @@ export default function App() {
       }
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       if (isResizing && resizeRef.current) {
         const { id, currentW, currentH } = resizeRef.current;
         setMappings(prev => prev.map(m => m.id === id ? { ...m, width: currentW, height: currentH } : m));
@@ -238,6 +271,9 @@ export default function App() {
         const { id, currentX, currentY } = dragRef.current;
         setMappings(prev => prev.map(m => m.id === id ? { ...m, x: currentX, y: currentY } : m));
       }
+
+      const loupeEl = document.getElementById('drag-loupe');
+      if (loupeEl) loupeEl.style.opacity = '0';
 
       setIsResizing(false);
       setIsDragging(false);
@@ -248,15 +284,50 @@ export default function App() {
     };
 
     if (isResizing || isDragging || isPanning) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
     }
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [isResizing, isDragging, isPanning]);
+
+  // Touch zoom logic (Pinch)
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault(); // Prevents browser scale
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (pinchRef.current !== null) {
+          const delta = distance - pinchRef.current;
+          setZoom(prev => Math.min(Math.max(0.5, prev + delta * 0.01), 3));
+        }
+        pinchRef.current = distance;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      pinchRef.current = null;
+    };
+
+    // We must attach { passive: false } to prevent default browser zooming on touches
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, []);
 
   const handleZoom = (delta: number) => {
     setZoom(prev => {
@@ -310,6 +381,15 @@ export default function App() {
             <span className={cn("w-2 h-2 rounded-full", image ? "bg-emerald-500 animate-pulse" : "bg-slate-300")}></span>
             {image ? "READY FOR MAPPING" : "STATE: IDLE"}
           </div>
+          {mappings.length > 0 && (
+            <button 
+              onClick={toggleLockAll}
+              className="hidden lg:flex bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded text-xs font-semibold hover:bg-slate-200 transition-colors shadow-sm active:scale-95 items-center gap-1.5"
+            >
+              {mappings.every(m => m.isLocked) ? <Unlock size={14} /> : <Lock size={14} />}
+              {mappings.every(m => m.isLocked) ? "Unlock All" : "Lock All"}
+            </button>
+          )}
           {!image && (
             <button 
               onClick={loadSample}
@@ -415,9 +495,9 @@ export default function App() {
             </div>
           ) : (
             <div 
-              className={cn("relative shadow-2xl bg-white border border-slate-300 transition-transform origin-center cursor-default", interactionMode === 'pan' && (isPanning ? 'cursor-grabbing' : 'cursor-grab'))}
+              className={cn("relative shadow-2xl bg-white border border-slate-300 transition-transform origin-center cursor-default touch-none", interactionMode === 'pan' && (isPanning ? 'cursor-grabbing' : 'cursor-grab'))}
               style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-              onMouseDown={startPan}
+              onPointerDown={startPan}
             >
               <img 
                 ref={imgRef}
@@ -427,7 +507,7 @@ export default function App() {
                 referrerPolicy="no-referrer"
               />
               <div 
-                className={cn("absolute inset-0", interactionMode === 'map' ? "cursor-crosshair" : "pointer-events-none")}
+                className={cn("absolute inset-0 touch-none", interactionMode === 'map' ? "cursor-crosshair" : "pointer-events-none")}
                 onClick={addMapping}
               >
                 {mappings.map((m) => (
@@ -451,8 +531,9 @@ export default function App() {
                       width: `${m.width}%`,
                       height: `${m.height}%`,
                       pointerEvents: interactionMode === 'map' ? 'auto' : 'none',
+                      touchAction: 'none'
                     }}
-                    onMouseDown={(e) => startDrag(e, m)}
+                    onPointerDown={(e) => startDrag(e, m)}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedId(m.id);
@@ -470,11 +551,13 @@ export default function App() {
                     {/* Resize Handle */}
                     {selectedId === m.id && !m.isLocked && (
                       <div 
-                        onMouseDown={(e) => startResize(e, m)}
-                        className="absolute -bottom-1 -right-1 w-3 h-3 bg-indigo-600 rounded-sm cursor-nwse-resize shadow-md flex items-center justify-center group-hover:scale-110 transition-transform"
+                        onPointerDown={(e) => startResize(e, m)}
+                        className="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-600 rounded-sm cursor-nwse-resize shadow-md flex items-center justify-center group-hover:scale-110 transition-transform overflow-visible touch-none"
                         style={{ transform: `scale(${1/zoom})` }}
                       >
-                         <div className="w-1 h-1 bg-white/40 rounded-full" />
+                         <div className="w-1.5 h-1.5 bg-white/40 rounded-full" />
+                         {/* Expanded invisible touch target for mobile precision */}
+                         <div className="absolute inset-[-10px] bg-transparent" />
                       </div>
                     )}
                   </motion.div>
@@ -484,9 +567,25 @@ export default function App() {
           )}
         </div>
 
-        {/* Mapping Interface Sidebar - High Density */}
-        <aside className="w-[380px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-xl overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        {/* Global Transparent Overlay for Mobile when Drawer is open */}
+        {selectedId && (
+           <div 
+              onClick={() => setSelectedId(null)}
+              className="fixed inset-0 bg-slate-900/10 z-40 lg:hidden"
+           />
+        )}
+
+        {/* Mapping Interface Sidebar / Bottom Drawer */}
+        <aside className={cn(
+          "bg-white border-slate-200 flex flex-col shrink-0 shadow-2xl lg:shadow-xl fixed lg:relative z-50 transition-transform duration-300 ease-in-out lg:translate-y-0",
+          "inset-x-0 bottom-0 top-[40vh] lg:top-auto rounded-t-xl lg:rounded-none border-t lg:border-t-0 lg:border-l lg:w-[380px]",
+          !selectedId ? "translate-y-full" : "translate-y-0"
+        )}>
+          {/* Mobile Handle */}
+          <div className="lg:hidden flex items-center justify-center pt-2 pb-1">
+             <div className="w-10 h-1 bg-slate-200 rounded-full"></div>
+          </div>
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between rounded-t-xl lg:rounded-none">
             <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Field Configuration</h3>
             {selectedId && (
                <button onClick={() => setSelectedId(null)} className="text-slate-400 hover:text-slate-600">
@@ -712,6 +811,18 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* The Magnifying Loupe Node */}
+      <div 
+        id="drag-loupe" 
+        className="fixed w-24 h-24 rounded-full border-[3px] border-indigo-500 bg-slate-50 overflow-hidden pointer-events-none shadow-2xl z-50 opacity-0 transition-opacity duration-150" 
+        style={{ transform: 'translate(-50%, -50%)' }}
+      >
+        <div className="absolute inset-0 bg-indigo-500/10 z-10 hidden" />
+        <div className="absolute top-1/2 left-1/2 w-3 h-3 border border-indigo-500 shadow-sm rounded-full -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none crosshair-loupe bg-indigo-500/10" />
+        <img id="drag-loupe-img" src={image || ''} className="absolute max-w-none transform-gpu origin-top-left" alt="Zoomed Canvas" />
+      </div>
+
     </div>
   );
 }
