@@ -16,6 +16,7 @@ import {
   Info,
   Settings2,
   Scan,
+  Database,
   ZoomIn,
   ZoomOut,
   Maximize,
