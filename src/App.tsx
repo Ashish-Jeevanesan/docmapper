@@ -58,8 +58,8 @@ export default function App() {
   const importInputRef = useRef<HTMLInputElement>(null);
   
   // References to preserve coordinates during continuous drag events
-  const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number } | null>(null);
-  const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number } | null>(null);
+  const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number, currentW: number, currentH: number } | null>(null);
+  const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number, currentX: number, currentY: number, boxWidth: number, boxHeight: number } | null>(null);
   const panRef = useRef<{ startX: number, startY: number, startPanX: number, startPanY: number } | null>(null);
 
   // --- FILE HANDLING ---
@@ -144,7 +144,9 @@ export default function App() {
       startX: e.clientX,
       startY: e.clientY,
       startWidth: m.width,
-      startHeight: m.height
+      startHeight: m.height,
+      currentW: m.width,
+      currentH: m.height
     };
   };
 
@@ -158,7 +160,11 @@ export default function App() {
       startX: e.clientX,
       startY: e.clientY,
       startBoxX: m.x,
-      startBoxY: m.y
+      startBoxY: m.y,
+      currentX: m.x,
+      currentY: m.y,
+      boxWidth: m.width,
+      boxHeight: m.height
     };
     setSelectedId(m.id);
   };
@@ -186,27 +192,33 @@ export default function App() {
         const deltaXPercent = ((e.clientX - startX) / rect.width) * 100;
         const deltaYPercent = ((e.clientY - startY) / rect.height) * 100;
 
-        setMappings(prev => prev.map(m => 
-          m.id === id ? { 
-            ...m, 
-            width: Math.max(1, startWidth + deltaXPercent),
-            height: Math.max(1, startHeight + deltaYPercent)
-          } : m
-        ));
+        const newW = Math.max(1, startWidth + deltaXPercent);
+        const newH = Math.max(1, startHeight + deltaYPercent);
+        resizeRef.current.currentW = newW;
+        resizeRef.current.currentH = newH;
+
+        const el = document.getElementById(`mapping-${id}`);
+        if (el) {
+          el.style.width = `${newW}%`;
+          el.style.height = `${newH}%`;
+        }
       } else if (isDragging && dragRef.current && imgRef.current) {
-        const { id, startX, startY, startBoxX, startBoxY } = dragRef.current;
+        const { id, startX, startY, startBoxX, startBoxY, boxWidth, boxHeight } = dragRef.current;
         const rect = imgRef.current.getBoundingClientRect();
         
         const deltaXPercent = ((e.clientX - startX) / rect.width) * 100;
         const deltaYPercent = ((e.clientY - startY) / rect.height) * 100;
 
-        setMappings(prev => prev.map(m => 
-          m.id === id ? { 
-            ...m, 
-            x: Math.max(0, Math.min(100 - m.width, startBoxX + deltaXPercent)),
-            y: Math.max(0, Math.min(100 - m.height, startBoxY + deltaYPercent))
-          } : m
-        ));
+        const newX = Math.max(0, Math.min(100 - boxWidth, startBoxX + deltaXPercent));
+        const newY = Math.max(0, Math.min(100 - boxHeight, startBoxY + deltaYPercent));
+        dragRef.current.currentX = newX;
+        dragRef.current.currentY = newY;
+
+        const el = document.getElementById(`mapping-${id}`);
+        if (el) {
+          el.style.left = `${newX}%`;
+          el.style.top = `${newY}%`;
+        }
       } else if (isPanning && panRef.current) {
         const { startX, startY, startPanX, startPanY } = panRef.current;
         setPan({
@@ -217,6 +229,15 @@ export default function App() {
     };
 
     const handleMouseUp = () => {
+      if (isResizing && resizeRef.current) {
+        const { id, currentW, currentH } = resizeRef.current;
+        setMappings(prev => prev.map(m => m.id === id ? { ...m, width: currentW, height: currentH } : m));
+      }
+      if (isDragging && dragRef.current) {
+        const { id, currentX, currentY } = dragRef.current;
+        setMappings(prev => prev.map(m => m.id === id ? { ...m, x: currentX, y: currentY } : m));
+      }
+
       setIsResizing(false);
       setIsDragging(false);
       setIsPanning(false);
@@ -411,6 +432,7 @@ export default function App() {
                 {mappings.map((m) => (
                   <motion.div
                     key={m.id}
+                    id={`mapping-${m.id}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className={cn(
