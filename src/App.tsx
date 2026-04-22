@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { FieldMapping } from './types';
 
+// Mock Initial Fields to show the user upon clicking 'Load Sample'
 const INITIAL_FIELDS: FieldMapping[] = [
   { id: '1', label: 'Emitter Name', columnName: 'emitter_name', comment: 'Top left industrial name', x: 20, y: 11, width: 20, height: 4 },
   { id: '2', label: 'CNPJ', columnName: 'emitter_cnpj', comment: 'Verify against master data', x: 75, y: 26, width: 15, height: 3 },
@@ -35,24 +36,35 @@ const INITIAL_FIELDS: FieldMapping[] = [
 ];
 
 export default function App() {
+  // --- Core Document & Canvas State ---
   const [image, setImage] = useState<string | null>(null);
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  
+  // --- UI & Viewport State ---
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [isResizing, setIsResizing] = useState(false);
-  const [interactionMode, setInteractionMode] = useState<'map' | 'pan'>('map');
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  
+  // --- Interaction Tools State (Cursor Modes) ---
+  const [interactionMode, setInteractionMode] = useState<'map' | 'pan'>('map');
+  const [isResizing, setIsResizing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   
+  // --- DOM References for interactions ---
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  
+  // References to preserve coordinates during continuous drag events
   const resizeRef = useRef<{ id: string, startX: number, startY: number, startWidth: number, startHeight: number } | null>(null);
   const dragRef = useRef<{ id: string, startX: number, startY: number, startBoxX: number, startBoxY: number } | null>(null);
   const panRef = useRef<{ startX: number, startY: number, startPanX: number, startPanY: number } | null>(null);
 
+  // --- FILE HANDLING ---
+  
+  // Parse uploaded image into base64 for canvas rendering
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -65,6 +77,7 @@ export default function App() {
     }
   };
 
+  // Parse uploaded JSON Schema map and inject straight into state
   const handleJSONUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -95,6 +108,9 @@ export default function App() {
     setPan({ x: 0, y: 0 });
   };
 
+  // --- INTERACTION HANDLERS ---
+  
+  // Creates a new mapping box directly on the clicked coordinates (translated to percentages)
   const addMapping = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!imgRef.current || isResizing || isDragging || interactionMode === 'pan') return;
     const rect = imgRef.current.getBoundingClientRect();
@@ -159,6 +175,7 @@ export default function App() {
     };
   };
 
+  // Core Event Loop for Mouse movement (Resizing mappings, dragging mappings, or panning the entire canvas)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizing && resizeRef.current && imgRef.current) {
@@ -227,6 +244,7 @@ export default function App() {
     });
   };
 
+  // Updates specific values inside a targeted FieldMapping
   const updateMapping = (id: string, updates: Partial<FieldMapping>) => {
     setMappings(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   };
@@ -238,6 +256,7 @@ export default function App() {
 
   const selectedMapping = mappings.find(m => m.id === selectedId);
 
+  // Generate and force-download a pure `.json` file representing the current state of mappings
   const downloadJSON = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mappings, null, 2));
     const downloadAnchorNode = document.createElement('a');
