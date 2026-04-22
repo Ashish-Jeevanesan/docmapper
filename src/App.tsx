@@ -15,7 +15,7 @@ import {
   X,
   Info,
   Settings2,
-  Database,
+  Scan,
   ZoomIn,
   ZoomOut,
   Maximize,
@@ -273,7 +273,7 @@ export default function App() {
       <header className="h-14 bg-white border-b border-slate-300 flex items-center justify-between px-6 shrink-0 z-40">
         <div className="flex items-center gap-4">
           <div className="bg-indigo-600 text-white p-1.5 rounded shadow-sm">
-            <Database size={18} />
+            <Scan size={18} />
           </div>
           <div>
             <h1 className="text-sm font-bold uppercase tracking-tight leading-none">DocuMapper</h1>
@@ -414,7 +414,7 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className={cn(
-                      "absolute border-2 transition-all group",
+                      "absolute border-2 transition-colors group",
                       m.isLocked ? "border-solid border-slate-400 bg-slate-100/10 hover:border-slate-500" : "border-dashed",
                       selectedId === m.id && !m.isLocked
                         ? "border-indigo-500 bg-indigo-50/50 z-30 ring-2 ring-indigo-500/10 cursor-move" 
