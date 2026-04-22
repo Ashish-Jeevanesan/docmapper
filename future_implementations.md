@@ -21,3 +21,13 @@ When a user draws a box over a column on an invoice, a hovering tooltip would qu
 
 ## 4. Webhook & API Integrations
 Instead of just downloading the resulting JSON schema, a "Deploy Schema" button could POST the structure directly to a customer's production endpoints or intelligent document processing layer.
+
+## 5. Mobile-First Accessibility & Touch UI
+While document mapping is traditionally a desktop-heavy task, supporting mobile users opens the door for quick, on-the-go schema approvals and field adjustments from a smartphone. 
+
+### Mobile Design Plan
+Implementing a mobile-friendly architecture will require solving standard viewport constraints and touch-accuracy challenges:
+- **Event Engine Migration**: Upgrade the current `mousedown`/`mousemove` hardware engine to support raw `touchstart` and `touchmove` events for seamless finger-dragging across the canvas.
+- **Collapsible UI Architecture**: The current right-hand configuration panel will be refactored into a **Bottom Sheet / Drawer View** that slides up when a mapped box is double-tapped, preserving maximum screen real-estate for the document itself.
+- **Magnifying Loupe**: Because human fingers obscure coordinate precision while dragging, a dynamic "Magnifying Loupe" sphere should render *above* the user's touch point. This will display a 200% zoomed sub-view of the box corner they are dragging, allowing for pixel-perfect edge alignment on small tactile screens.
+- **Pinch-to-Zoom Engine**: Integrating two-finger pinch gesture detection to interact directly with the React `zoom` state layer smoothly.
